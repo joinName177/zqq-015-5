@@ -54,3 +54,35 @@ export interface KinshipResult {
   relationshipLabel: '同源近亲' | '异曲同工' | '形似神离' | '截然对立' | '远房微亲';
   comparativeAnalysis: string;
 }
+
+/** 纠错修订字段类型：字形（书体断代）/ 年代（朝代纪年）/ 释义（现代释义） */
+export type CorrectionFieldType = 'glyph' | 'era' | 'definition';
+
+/** 本地审核状态：草稿 → 待审核 → 已通过 / 已驳回 */
+export type CorrectionStatus = 'draft' | 'pending' | 'approved' | 'rejected';
+
+/**
+ * 用户纠错修订提案。
+ * 注意：提案独立存储于本地，任何状态下都不会回写覆盖权威词条（IdiomProfile）。
+ */
+export interface CorrectionSubmission {
+  id: string;
+  idiomId: string;
+  idiomText: string;
+  fieldType: CorrectionFieldType;
+  /** 展示用目标标签，如「字形 · 守（甲骨文）」 */
+  targetLabel: string;
+  /** 权威字段路径，如 characters[0].scriptType / allusion.dynasty / modernDefinition */
+  fieldPath: string;
+  /** 权威原值快照（提交时锁定，不随后续词条变化而改变） */
+  originalValue: string;
+  /** 用户建议的修订值 */
+  proposedValue: string;
+  /** 修订依据 / 理由 */
+  reason: string;
+  status: CorrectionStatus;
+  createdAt: number;
+  updatedAt: number;
+  submittedAt?: number;
+  reviewedAt?: number;
+}

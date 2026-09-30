@@ -1,9 +1,11 @@
 import { IdiomProfile, KinshipResult } from '../core/models';
+import { CorrectionTarget } from './correction';
 
 export interface IdiomUIHandlers {
   onSearch: (idiomText: string) => void;
   onCompare: (idiomA: string, idiomB: string) => void;
   onSwitchMode: (mode: 'single' | 'compare') => void;
+  onOpenCorrection: (target: CorrectionTarget) => void;
 }
 
 export function renderIdiomApp(
@@ -18,6 +20,9 @@ export function renderIdiomApp(
 ) {
   const esc = (s: string) =>
     s.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
+
+  // 纠错入口：把权威字段快照以 JSON 存入 data 属性（浏览器自动解码 &quot; 实体）
+  const corrAttr = (target: CorrectionTarget) => `data-corr-target='${esc(JSON.stringify(target))}'`;
 
   // DNA Donut Chart SVG
   const dna = currentProfile.dna;
@@ -89,9 +94,18 @@ export function renderIdiomApp(
             <h2>${esc(currentProfile.idiom)}</h2>
             <div class="hero-pinyin">${esc(currentProfile.pinyin)} · ${esc(currentProfile.syntacticRole)}</div>
             <div class="hero-desc">${esc(currentProfile.modernDefinition)}</div>
+            <button class="corr-entry-btn" ${corrAttr({
+              fieldType: 'definition',
+              idiomId: currentProfile.id,
+              idiomText: currentProfile.idiom,
+              targetLabel: `释义 · ${currentProfile.idiom}`,
+              fieldPath: 'modernDefinition',
+              originalValue: currentProfile.modernDefinition
+            })}>✏️ 纠错 · 提交释义修订建议</button>
           </div>
-          <div>
+          <div class="hero-side">
             <span class="polarity-badge ${currentProfile.dna.polarity}">感情色彩 · ${currentProfile.dna.polarity}</span>
+            <span class="corr-lock-hint">🔒 权威词条 · 修订仅提交审核</span>
           </div>
         </section>
 
@@ -106,7 +120,7 @@ export function renderIdiomApp(
             <div class="oracle-cards-grid">
               ${currentProfile.characters
                 .map(
-                  ch => `
+                  (ch, idx) => `
                 <div class="oracle-card">
                   <div class="glyph-svg-wrap">
                     <svg viewBox="0 0 100 100">${ch.glyphSvg}</svg>
@@ -114,6 +128,14 @@ export function renderIdiomApp(
                   <div class="char-kanji">${ch.char}</div>
                   <div class="char-script-tag">${ch.scriptType} · 部首【${ch.radical}】</div>
                   <div class="char-origin-text"><strong>本义：</strong>${esc(ch.originalMeaning)}</div>
+                  <button class="corr-entry-btn corr-entry-sm" ${corrAttr({
+                    fieldType: 'glyph',
+                    idiomId: currentProfile.id,
+                    idiomText: currentProfile.idiom,
+                    targetLabel: `字形 · ${ch.char}（${ch.scriptType}）`,
+                    fieldPath: `characters[${idx}].scriptType`,
+                    originalValue: ch.scriptType
+                  })}>纠错 · 字形</button>
                 </div>
               `
                 )
@@ -131,6 +153,14 @@ export function renderIdiomApp(
               </div>
               <p style="font-size:13px;color:var(--silk);margin-top:8px;">${esc(currentProfile.allusion.historicalEvent)}</p>
               <div class="allusion-quote">${esc(currentProfile.allusion.originalAncientQuote)}</div>
+              <button class="corr-entry-btn corr-entry-sm" ${corrAttr({
+                fieldType: 'era',
+                idiomId: currentProfile.id,
+                idiomText: currentProfile.idiom,
+                targetLabel: `年代 · ${currentProfile.allusion.dynasty}`,
+                fieldPath: 'allusion.dynasty',
+                originalValue: currentProfile.allusion.dynasty
+              })}>纠错 · 年代（朝代纪年）</button>
             </div>
 
             <!-- 3. Semantic Evolution Path -->
@@ -270,6 +300,18 @@ export function renderIdiomApp(
   // Attach event listeners
   container.querySelector('#btnModeSingle')?.addEventListener('click', () => handlers.onSwitchMode('single'));
   container.querySelector('#btnModeCompare')?.addEventListener('click', () => handlers.onSwitchMode('compare'));
+
+  // 资料卡纠错入口：解析权威字段快照并打开纠错模态框
+  container.querySelectorAll<HTMLElement>('[data-corr-target]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      try {
+        const target = JSON.parse(btn.getAttribute('data-corr-target') ?? '') as CorrectionTarget;
+        if (target && target.fieldType) handlers.onOpenCorrection(target);
+      } catch {
+        /* 忽略非法数据 */
+      }
+    });
+  });
 
   if (mode === 'single') {
     const singleInput = container.querySelector('#singleInput') as HTMLInputElement;
