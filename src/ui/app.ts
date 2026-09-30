@@ -1,4 +1,11 @@
 import { IdiomProfile, KinshipResult } from '../core/models';
+import {
+  CorrectionField,
+  CorrectionTargetType,
+  buildTargetRef,
+  targetKeyOf
+} from '../core/correction';
+import { CorrectionContext, renderStatusBadge } from './correction-ui';
 
 export interface IdiomUIHandlers {
   onSearch: (idiomText: string) => void;
@@ -14,10 +21,18 @@ export function renderIdiomApp(
   kinshipResult: KinshipResult | null,
   compareA: string,
   compareB: string,
-  handlers: IdiomUIHandlers
+  handlers: IdiomUIHandlers,
+  corr: CorrectionContext
 ) {
   const esc = (s: string) =>
     s.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
+
+  // 纠错徽标查询：按「权威字段标识」取该字段最新一条提案状态
+  const corrBadge = (targetType: CorrectionTargetType, index: number, field: CorrectionField) => {
+    const key = targetKeyOf(buildTargetRef(currentProfile, targetType, index, field));
+    return renderStatusBadge(corr.latestByTargetKey.get(key));
+  };
+  const reviewTotal = corr.pendingCount + corr.draftCount;
 
   // DNA Donut Chart SVG
   const dna = currentProfile.dna;
@@ -62,9 +77,15 @@ export function renderIdiomApp(
             <p>CHINESE IDIOM ETYMOLOGY &amp; SEMANTIC DNA PROFILER · v1.0.0</p>
           </div>
         </div>
-        <div class="mode-toggle">
-          <button class="mode-btn ${mode === 'single' ? 'active' : ''}" id="btnModeSingle">单词溯源剖析</button>
-          <button class="mode-btn ${mode === 'compare' ? 'active' : ''}" id="btnModeCompare">双词亲缘对比</button>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <button class="corr-header-btn" id="btnReviewCenter" title="查看本机纠错草稿与待审核提案">
+            🗂 本地审核中心
+            ${reviewTotal > 0 ? `<span class="corr-header-count">${reviewTotal}</span>` : ''}
+          </button>
+          <div class="mode-toggle">
+            <button class="mode-btn ${mode === 'single' ? 'active' : ''}" id="btnModeSingle">单词溯源剖析</button>
+            <button class="mode-btn ${mode === 'compare' ? 'active' : ''}" id="btnModeCompare">双词亲缘对比</button>
+          </div>
         </div>
       </header>
 
@@ -89,6 +110,12 @@ export function renderIdiomApp(
             <h2>${esc(currentProfile.idiom)}</h2>
             <div class="hero-pinyin">${esc(currentProfile.pinyin)} · ${esc(currentProfile.syntacticRole)}</div>
             <div class="hero-desc">${esc(currentProfile.modernDefinition)}</div>
+            <div class="corr-inline-actions">
+              <button class="corr-link-btn" data-corr-target="idiom" data-cindex="-1" data-cfield="definition">
+                ✍ 提交释义修订建议
+              </button>
+              ${corrBadge('idiom', -1, 'definition')}
+            </div>
           </div>
           <div>
             <span class="polarity-badge ${currentProfile.dna.polarity}">感情色彩 · ${currentProfile.dna.polarity}</span>
@@ -106,7 +133,7 @@ export function renderIdiomApp(
             <div class="oracle-cards-grid">
               ${currentProfile.characters
                 .map(
-                  ch => `
+                  (ch, i) => `
                 <div class="oracle-card">
                   <div class="glyph-svg-wrap">
                     <svg viewBox="0 0 100 100">${ch.glyphSvg}</svg>
@@ -114,6 +141,15 @@ export function renderIdiomApp(
                   <div class="char-kanji">${ch.char}</div>
                   <div class="char-script-tag">${ch.scriptType} · 部首【${ch.radical}】</div>
                   <div class="char-origin-text"><strong>本义：</strong>${esc(ch.originalMeaning)}</div>
+                  <div class="char-origin-text"><strong>构形：</strong>${esc(ch.pictographicExplanation)}</div>
+                  <div class="corr-card-actions">
+                    <button class="corr-mini-btn" data-corr-target="character" data-cindex="${i}" data-cfield="glyph"
+                            title="对该字的字形构形说解提交修订">字形纠错</button>
+                    ${corrBadge('character', i, 'glyph')}
+                    <button class="corr-mini-btn" data-corr-target="character" data-cindex="${i}" data-cfield="definition"
+                            title="对该字的本义释义提交修订">释义纠错</button>
+                    ${corrBadge('character', i, 'definition')}
+                  </div>
                 </div>
               `
                 )
@@ -125,9 +161,15 @@ export function renderIdiomApp(
               <span>📜 典故出处考据时间轴</span>
             </div>
             <div class="history-panel">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <strong style="color:var(--bronze);font-size:16px;">${esc(currentProfile.allusion.classicBook)}</strong>
-                <span style="font-size:12px;color:var(--ash);">${esc(currentProfile.allusion.dynasty)} · ${esc(currentProfile.allusion.author)}</span>
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                <div>
+                  <strong style="color:var(--bronze);font-size:16px;">${esc(currentProfile.allusion.classicBook)}</strong>
+                  <div style="font-size:12px;color:var(--ash);margin-top:2px;">${esc(currentProfile.allusion.dynasty)} · ${esc(currentProfile.allusion.author)} · ${esc(currentProfile.allusion.yearApprox)}</div>
+                </div>
+                <div class="corr-inline-actions corr-inline-actions-right">
+                  <button class="corr-mini-btn" data-corr-target="allusion" data-cindex="-1" data-cfield="era">年代纠错</button>
+                  ${corrBadge('allusion', -1, 'era')}
+                </div>
               </div>
               <p style="font-size:13px;color:var(--silk);margin-top:8px;">${esc(currentProfile.allusion.historicalEvent)}</p>
               <div class="allusion-quote">${esc(currentProfile.allusion.originalAncientQuote)}</div>
@@ -141,11 +183,21 @@ export function renderIdiomApp(
               <div class="evolution-path">
                 ${currentProfile.evolutionPath
                   .map(
-                    step => `
+                    (step, i) => `
                   <div class="evolution-node">
-                    <div class="evolution-era">${esc(step.era)} · 演进形态【${step.semanticCategory}】</div>
+                    <div class="evolution-era">
+                      ${esc(step.era)} · 演进形态【${step.semanticCategory}】
+                      <div class="corr-inline-actions corr-inline-actions-right">
+                        <button class="corr-mini-btn corr-mini-btn-xs" data-corr-target="evolution" data-cindex="${i}" data-cfield="era">年代纠错</button>
+                        ${corrBadge('evolution', i, 'era')}
+                      </div>
+                    </div>
                     <div class="evolution-meaning">${esc(step.meaning)}</div>
                     <div style="font-size:11px;color:var(--ash);margin-top:2px;">语境实录：${esc(step.contextSample)}</div>
+                    <div class="corr-inline-actions">
+                      <button class="corr-mini-btn corr-mini-btn-xs" data-corr-target="evolution" data-cindex="${i}" data-cfield="definition">释义纠错</button>
+                      ${corrBadge('evolution', i, 'definition')}
+                    </div>
                   </div>
                 `
                   )
@@ -270,6 +322,27 @@ export function renderIdiomApp(
   // Attach event listeners
   container.querySelector('#btnModeSingle')?.addEventListener('click', () => handlers.onSwitchMode('single'));
   container.querySelector('#btnModeCompare')?.addEventListener('click', () => handlers.onSwitchMode('compare'));
+  container.querySelector('#btnReviewCenter')?.addEventListener('click', () => corr.openReviewCenter());
+
+  // 资料卡上的「提交修订建议」入口
+  container.querySelectorAll<HTMLElement>('[data-corr-target]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetType = btn.getAttribute('data-corr-target') as CorrectionTargetType | null;
+      const field = btn.getAttribute('data-cfield') as CorrectionField | null;
+      const index = parseInt(btn.getAttribute('data-cindex') ?? '-1', 10);
+      if (targetType && field) {
+        corr.openEditor({ profile: currentProfile, targetType, index, field });
+      }
+    });
+  });
+
+  // 资料卡上的本地审核状态徽标 → 打开对应提案详情
+  container.querySelectorAll<HTMLElement>('.corr-badge[data-proposal-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-proposal-id');
+      if (id) corr.openProposal(id);
+    });
+  });
 
   if (mode === 'single') {
     const singleInput = container.querySelector('#singleInput') as HTMLInputElement;
